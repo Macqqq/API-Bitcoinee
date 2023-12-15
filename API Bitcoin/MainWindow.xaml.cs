@@ -1,92 +1,155 @@
 ﻿using Newtonsoft.Json;
+using RestSharp;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
-using System.Net.Http;
-using System.Text;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
+using System.Windows.Threading;
 
 namespace API_Bitcoin
 {
-    /// <summary>
-    /// Logique d'interaction pour MainWindow.xaml
-    /// </summary>
+    // Assurez-vous que la classe Result implémente INotifyPropertyChanged
+    public class Result : INotifyPropertyChanged
+    {
+        public event PropertyChangedEventHandler PropertyChanged;
+
+        private double _price;
+        private double _priceChange1h;
+        private double _priceChange24h;
+        private double _priceChange7d;
+        private double _marketCap;
+        private double _volume24h;
+        private double _circulatingSupply;
+        private string _name;
+
+        public double price
+        {
+            get => _price;
+            set => SetProperty(ref _price, value);
+        }
+
+        public double priceChange1h
+        {
+            get => _priceChange1h;
+            set => SetProperty(ref _priceChange1h, value);
+        }
+
+        public double priceChange24h
+        {
+            get => _priceChange24h;
+            set => SetProperty(ref _priceChange24h, value);
+        }
+
+        public double priceChange7d
+        {
+            get => _priceChange7d;
+            set => SetProperty(ref _priceChange7d, value);
+        }
+
+        public double marketCap
+        {
+            get => _marketCap;
+            set => SetProperty(ref _marketCap, value);
+        }
+
+        public double volume24h
+        {
+            get => _volume24h;
+            set => SetProperty(ref _volume24h, value);
+        }
+
+        public double circulatingSupply
+        {
+            get => _circulatingSupply;
+            set => SetProperty(ref _circulatingSupply, value);
+        }
+
+        public string name
+        {
+            get => _name;
+            set => SetProperty(ref _name, value);
+        }
+
+        protected void OnPropertyChanged([CallerMemberName] string propertyName = null)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+
+        protected bool SetProperty<T>(ref T backingStore, T value, [CallerMemberName] string propertyName = "", Action onChanged = null)
+        {
+            if (EqualityComparer<T>.Default.Equals(backingStore, value))
+                return false;
+
+            backingStore = value;
+            onChanged?.Invoke();
+            OnPropertyChanged(propertyName);
+            return true;
+        }
+    }
+
     public partial class MainWindow : Window
     {
+        private DispatcherTimer _timer;
+        public Result BitcoinData { get; set; }
+
         public MainWindow()
         {
             InitializeComponent();
-            
-            GetBitcoin();
+            BitcoinData = new Result { priceChange1h = 2.5 }; // Valeur statique pour tester
+            DataContext = BitcoinData;
+            _timer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMinutes(5) // Refresh every 5 minutes
+            };
+            _timer.Tick += Timer_Tick;
+            _timer.Start();
+            Task.Run(() => GetBitcoin()); // Call the method asynchronously
         }
-        // Root myDeserializedClass = JsonConvert.DeserializeObject<Root>(myJsonResponse);
-        public class Coin
-        {
-            public string id { get; set; }
-            public string icon { get; set; }
-            public string name { get; set; }
-            public string symbol { get; set; }
-            public int rank { get; set; }
-            public double price { get; set; }
-            public double priceBtc { get; set; }
-            public double volume { get; set; }
-            public double marketCap { get; set; }
-            public object availableSupply { get; set; }
-            public object totalSupply { get; set; }
-            public double priceChange1h { get; set; }
-            public double priceChange1d { get; set; }
-            public double priceChange1w { get; set; }
-            public string websiteUrl { get; set; }
-            public string twitterUrl { get; set; }
-            public List<string> exp { get; set; }
-            public string contractAddress { get; set; }
-            public int? decimals { get; set; }
-        }
-
         public class Root
         {
-            public List<Coin> coins { get; set; }
-            public string warning { get; set; }
+            [JsonProperty("result")]
+            public List<Result> Result { get; set; }
+        }
+        private void Timer_Tick(object sender, EventArgs e)
+        {
+            Task.Run(() => GetBitcoin()); // Call the method asynchronously
         }
 
         public async Task GetBitcoin()
         {
-            HttpClient client = new HttpClient();
             try
             {
-                HttpResponseMessage response = await client.GetAsync("https://api.coinstats.app/public/v1/coins?skip=0&limit=5&currency=EUR");
-                if (response.IsSuccessStatusCode)
-                {
-                    string result = await response.Content.ReadAsStringAsync();
-                    Root myDeserializedClass = JsonConvert.DeserializeObject<Root>(result);
+                var client = new RestClient("https://openapiv1.coinstats.app/coins");
+                var request = new RestRequest();
+                request.AddHeader("accept", "application/json");
+                request.AddHeader("X-API-KEY", "0qSRvDzjqVmDWRMnBiHkx/2v/wefOSm6q8WIUguCrEE="); // Make sure to use your actual API key
+                var response = await client.GetAsync(request);
 
-                    if (myDeserializedClass.coins != null && myDeserializedClass.coins.Any())
+                // Deserialize the JSON response
+                var data = JsonConvert.DeserializeObject<Root>(response.Content);
+
+                var bitcoin = data?.Result?.FirstOrDefault(coin => coin.name == "Bitcoin");
+
+                if (bitcoin != null)
+                {
+                    Dispatcher.Invoke(() =>
                     {
-                        Dispatcher.Invoke(() =>
-                        {
-                            Nomcrypto1.Text = myDeserializedClass.coins[0].name;
-                            TB_BitcoinPrice.Text = myDeserializedClass.coins[0].price.ToString("F2");
-                            Dimcrypto1.Text = "N'" + myDeserializedClass.coins[0].rank.ToString();
-                            TB_BitcoinChange.Text = myDeserializedClass.coins[0].priceChange1d.ToString("F2") + ("%");
-                        });
-                    }
+                        BitcoinData.price = bitcoin.price;
+                        BitcoinData.priceChange1h = bitcoin.priceChange1h;
+                        BitcoinData.priceChange24h = bitcoin.priceChange24h;
+                        BitcoinData.priceChange7d = bitcoin.priceChange7d;
+                        BitcoinData.marketCap = bitcoin.marketCap;
+                        BitcoinData.volume24h = bitcoin.volume24h;
+                        BitcoinData.circulatingSupply = bitcoin.circulatingSupply;
+                    });
                 }
             }
             catch (Exception ex)
             {
-                Dispatcher.Invoke(() =>
-                {
-                    TB_Bitcoin.Text = $"Erreur : {ex.Message}";
-                });
+                MessageBox.Show($"An error occurred: {ex.Message}");
             }
         }
     }
